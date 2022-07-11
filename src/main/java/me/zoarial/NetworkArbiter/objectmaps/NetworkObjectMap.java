@@ -23,10 +23,10 @@ public class NetworkObjectMap extends HashMap<Class<?>, NetworkObjectMap.Network
     }
 
 
-    public static class NetworkTypeMap extends HashMap<NetworkObjectEnum, Byte> {
-        private static final AutoIncrementInt inc = new AutoIncrementInt();
+    public static class TypeToRawMap extends HashMap<NetworkObjectEnum, Byte> {
+        private final AutoIncrementInt inc = new AutoIncrementInt();
 
-        public NetworkTypeMap() {
+        public TypeToRawMap() {
             super();
 
             put(NetworkObjectEnum.BYTE, inc.get());
@@ -37,6 +37,24 @@ public class NetworkObjectMap extends HashMap<Class<?>, NetworkObjectMap.Network
             put(NetworkObjectEnum.STRING, inc.get());
             put(NetworkObjectEnum.UUID, inc.get());
             put(NetworkObjectEnum.ARRAY, inc.get());
+        }
+
+    }
+
+    public static class RawToTypeMap extends HashMap<Byte, NetworkObjectEnum> {
+        private final AutoIncrementInt inc = new AutoIncrementInt();
+
+        public RawToTypeMap() {
+            super();
+
+            put(inc.get(), NetworkObjectEnum.BYTE);
+            put(inc.get(), NetworkObjectEnum.SHORT);
+            put(inc.get(), NetworkObjectEnum.INT);
+            put(inc.get(), NetworkObjectEnum.LONG);
+            put(inc.get(), NetworkObjectEnum.BOOLEAN);
+            put(inc.get(), NetworkObjectEnum.STRING);
+            put(inc.get(), NetworkObjectEnum.UUID);
+            put(inc.get(), NetworkObjectEnum.ARRAY);
         }
 
     }

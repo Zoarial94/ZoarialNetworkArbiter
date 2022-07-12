@@ -11,8 +11,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class Tests {
 
-    static AtomicReference<WorkingObject> returnedObject = new AtomicReference<>();
+    static final AtomicReference<WorkingObject> returnedObject = new AtomicReference<>();
+    static final WorkingObject sendingWorkingObject = new WorkingObject();
     public static void main(String[] args) {
+
+        sendingWorkingObject.l1 = 27558;
+        sendingWorkingObject.s1 = 12555;
+
         Thread sendingThread = new Thread(new SendingThread());
         Thread receivingThread = new Thread(new ReceivingThread());
 
@@ -30,7 +35,7 @@ public class Tests {
         }
 
         if(returnedObject.get() != null) {
-            System.out.println("Received object is equal to new object: " + returnedObject.get().equals(new WorkingObject()));
+            System.out.println("Received object is equal to new object: " + returnedObject.get().equals(sendingWorkingObject));
         }
 
     }
@@ -41,7 +46,7 @@ public class Tests {
             try {
                 ZoarialNetworkArbiter arbiter = new ZoarialNetworkArbiter(new Socket(Inet4Address.getLoopbackAddress(), 9400));
 
-                arbiter.sendObject(new WorkingObject());
+                arbiter.sendObject(sendingWorkingObject);
                 try {
                     arbiter.sendObject(new NotWorkingObject());
                 } catch(ArbiterException ignored) {

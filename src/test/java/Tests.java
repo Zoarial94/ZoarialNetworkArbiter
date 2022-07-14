@@ -48,7 +48,7 @@ public class Tests {
 
                 arbiter.sendObject(sendingWorkingObject);
                 try {
-                    arbiter.sendObject(new NotWorkingObject());
+                    //arbiter.sendObject(new NotWorkingObject());
                 } catch(ArbiterException ignored) {
 
                 }

@@ -6,7 +6,6 @@ import me.zoarial.NetworkArbiter.exceptions.ArbiterException;
 import me.zoarial.NetworkArbiter.exceptions.DuplicatePlacement;
 import me.zoarial.NetworkArbiter.exceptions.MismatchedObject;
 import me.zoarial.NetworkArbiter.exceptions.NotANetworkObject;
-import me.zoarial.NetworkArbiter.objectmaps.NetworkObjectMap;
 
 import java.io.*;
 import java.lang.reflect.Field;
@@ -17,16 +16,83 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+enum NetworkElementTypeEnum {
+    BYTE,
+    SHORT,
+    INT,
+    LONG,
+
+    BOOLEAN,
+    STRING,
+    UUID,
+    ARRAY,
+}
+
+class AutoIncrementInt {
+    private byte i = 1;
+
+    public byte get() {
+        return i++;
+    }
+}
 
 public class ZoarialNetworkArbiter {
     private final Socket socket;
-    private final NetworkObjectMap networkObjectMap;
+
+    private final HashMap<Class<?>, NetworkElementTypeEnum> classToNetworkElementMap = new HashMap<>();
+    private final HashMap<NetworkElementTypeEnum, Class<?>> networkElementToClassMap = new HashMap<>();
+
+    private final HashMap<NetworkElementTypeEnum, Byte> networkElementToByteMap = new HashMap<>();
+    private final HashMap<Byte, NetworkElementTypeEnum> byteToNetworkElementMap = new HashMap<>();
+
+    private final HashMap<NetworkElementTypeEnum, Byte> networkElementLengthMap = new HashMap<>();
+
+    private final AutoIncrementInt inc = new AutoIncrementInt();
 
     private final short NETWORK_ARBITER_VERSION = 1;
 
     public ZoarialNetworkArbiter(Socket socket) {
         this.socket = socket;
-        this.networkObjectMap = new NetworkObjectMap();
+
+        // TODO: Clean up and make these maps static at some point
+        classToNetworkElementMap.put(Byte.class, NetworkElementTypeEnum.BYTE);
+        classToNetworkElementMap.put(Short.class, NetworkElementTypeEnum.SHORT);
+        classToNetworkElementMap.put(Integer.class, NetworkElementTypeEnum.INT);
+        classToNetworkElementMap.put(Long.class, NetworkElementTypeEnum.LONG);
+        classToNetworkElementMap.put(Boolean.class, NetworkElementTypeEnum.BOOLEAN);
+        classToNetworkElementMap.put(String.class, NetworkElementTypeEnum.STRING);
+        classToNetworkElementMap.put(UUID.class, NetworkElementTypeEnum.UUID);
+
+        classToNetworkElementMap.put(byte.class, classToNetworkElementMap.get(Byte.class));
+        classToNetworkElementMap.put(short.class, classToNetworkElementMap.get(Short.class));
+        classToNetworkElementMap.put(int.class, classToNetworkElementMap.get(Integer.class));
+        classToNetworkElementMap.put(long.class, classToNetworkElementMap.get(Long.class));
+        classToNetworkElementMap.put(boolean.class, classToNetworkElementMap.get(Boolean.class));
+
+        networkElementToByteMap.put(NetworkElementTypeEnum.BYTE, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.SHORT, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.INT, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.LONG, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.BOOLEAN, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.STRING, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.UUID, inc.get());
+        networkElementToByteMap.put(NetworkElementTypeEnum.ARRAY, inc.get());
+
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.BYTE), NetworkElementTypeEnum.BYTE);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.SHORT), NetworkElementTypeEnum.SHORT);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.INT), NetworkElementTypeEnum.INT);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.LONG), NetworkElementTypeEnum.LONG);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.BOOLEAN), NetworkElementTypeEnum.BOOLEAN);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.STRING), NetworkElementTypeEnum.STRING);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.UUID), NetworkElementTypeEnum.UUID);
+        byteToNetworkElementMap.put(networkElementToByteMap.get(NetworkElementTypeEnum.ARRAY), NetworkElementTypeEnum.ARRAY);
+
+        networkElementLengthMap.put(NetworkElementTypeEnum.BYTE, (byte)1);
+        networkElementLengthMap.put(NetworkElementTypeEnum.SHORT, (byte)2);
+        networkElementLengthMap.put(NetworkElementTypeEnum.INT, (byte)4);
+        networkElementLengthMap.put(NetworkElementTypeEnum.LONG, (byte)8);
+        networkElementLengthMap.put(NetworkElementTypeEnum.BOOLEAN, (byte)1);
+        networkElementLengthMap.put(NetworkElementTypeEnum.UUID, (byte)16);
     }
 
     public void sendObject(Object obj) throws ArbiterException {
@@ -41,43 +107,16 @@ public class ZoarialNetworkArbiter {
 
         System.out.println();
         System.out.println();
-        Field[] fields = c.getFields();
-        HashMap<Integer, Field> fieldOrder = new HashMap<>();
-        for(Field f : fields) {
-            if(f.isAnnotationPresent(ZoarialObjectElement.class)) {
-                ZoarialObjectElement objectElement = f.getAnnotation(ZoarialObjectElement.class);
-                if(!fieldOrder.containsKey(objectElement.placement())) {
-                    fieldOrder.put(objectElement.placement(), f);
-                } else {
-                    Field existingField = fieldOrder.get(objectElement.placement());
-                    String str = "Duplicate placement found: " + objectElement.placement() + ". Existing: \"" + existingField + "\". New: \"" + f + "\".";
-                    throw new DuplicatePlacement(str);
-                }
-            }
-            //System.out.println(f);
-        }
 
-        // Sort the field order by the key (user provided placement)
-        List<Map.Entry<Integer, Field>> sortedElements = fieldOrder.entrySet().stream().sorted(Comparator.comparingInt(Map.Entry::getKey)).collect(Collectors.toList());
+        NetworkObjectStructure objectStructure = getObjectStructure(obj);
+        List<NetworkElement> basicElements = objectStructure.getBasicElements();
 
-        NetworkObjectMap.NetworkTypeLengthMap lengthMap = new NetworkObjectMap.NetworkTypeLengthMap();
-        NetworkObjectMap.TypeToRawMap typeMap = new NetworkObjectMap.TypeToRawMap();
+
         AtomicInteger totalLen = new AtomicInteger(7);
-        // Print list
-        sortedElements.forEach(e -> System.out.println("Entry " + e.getKey() + ": " + e.getValue()));
 
-        sortedElements.forEach(e -> {
-            Class<?> aClass = e.getValue().getType();
-            if(networkObjectMap.containsKey(aClass)) {
-                NetworkObjectMap.NetworkObjectEnum networkType = networkObjectMap.get(aClass);
-                int typeLen = lengthMap.get(networkType);
-                System.out.println(e + " (len: " + typeLen + "): " + networkType);
-                totalLen.addAndGet(typeLen + 1);
-            } else {
-                String str = "Object is not in map: " + aClass;
-                System.out.println(str);
-                throw new NotANetworkObject(str);
-            }
+        basicElements.forEach(e -> {
+            NetworkElementTypeEnum type = e.getType();
+            totalLen.getAndAdd(networkElementLengthMap.get(type) + 1);
 
         });
 
@@ -88,15 +127,14 @@ public class ZoarialNetworkArbiter {
         byte[] buf = new byte[totalLen.get()];
         System.arraycopy("ZNA".getBytes(), 0, buf, 0, 3);
         buf[3] = NETWORK_ARBITER_VERSION;
-        System.arraycopy(ByteBuffer.allocate(2).putShort((short)sortedElements.size()).array(), 0, buf, 4, 2);
+        System.arraycopy(ByteBuffer.allocate(2).putShort((short)basicElements.size()).array(), 0, buf, 4, 2);
         System.out.println("Working loop: \n");
-        for (Map.Entry<Integer, Field> element : sortedElements) {
+        for (NetworkElement element : basicElements) {
 
-            byte[] tmp = getByteList(obj, element.getValue(), networkObjectMap.get(element.getValue().getType()));
-            NetworkObjectMap.NetworkObjectEnum networkType = networkObjectMap.get(element.getValue().getType());
+            byte[] tmp = getByteList(obj, element);
 
-            System.out.println("Header (" + networkType + "):");
-            buf[i] = typeMap.get(networkType);
+            System.out.println("Header (" + element.getType() + "):");
+            buf[i] = networkElementToByteMap.get(element.getType());
             System.out.println(buf[i]);
             i++;
 
@@ -105,7 +143,7 @@ public class ZoarialNetworkArbiter {
 
             System.out.println("Data");
             for (byte b : tmp) {
-                System.out.print(b);
+                System.out.print(b + " ");
             }
             System.out.println("\n");
         }
@@ -119,7 +157,7 @@ public class ZoarialNetworkArbiter {
             System.out.println(b);
         }
 
-        BufferedOutputStream rawOut = null;
+        BufferedOutputStream rawOut;
         try {
             rawOut = new BufferedOutputStream(socket.getOutputStream());
             DataOutputStream out = new DataOutputStream(rawOut);
@@ -151,8 +189,8 @@ public class ZoarialNetworkArbiter {
         }
 
 
-        List<NetworkObjectMap.NetworkObjectEnum> objectNetworkRepresentation = getNetworkRepresentation(clazz);
-        List<NetworkObjectMap.NetworkObjectEnum> actualNetworkRepresentation = decodeNetworkObject(new ByteArrayInputStream(buf));
+        List<NetworkElementTypeEnum> objectNetworkRepresentation = getNetworkRepresentation(clazz);
+        List<NetworkElementTypeEnum> actualNetworkRepresentation = decodeNetworkObject(new ByteArrayInputStream(buf));
 
         if(!objectNetworkRepresentation.equals(actualNetworkRepresentation)) {
             throw new MismatchedObject("Objects don't match");
@@ -163,7 +201,9 @@ public class ZoarialNetworkArbiter {
         return Optional.of(createObject(clazz, new ByteArrayInputStream(buf)));
     }
 
-    public byte[] getByteList(Object obj, Field f, NetworkObjectMap.NetworkObjectEnum type) {
+    public byte[] getByteList(Object obj, NetworkElement element) {
+        NetworkElementTypeEnum type = element.getType();
+        Field f = element.getField();
         try {
             return switch (type) {
                 case BYTE -> new byte[]{(byte) f.get(obj)};
@@ -190,10 +230,10 @@ public class ZoarialNetworkArbiter {
         }
     }
 
-    public List<NetworkObjectMap.NetworkObjectEnum> getNetworkRepresentation(Class<?> clazz) throws ArbiterException {
+    public List<NetworkElementTypeEnum> getNetworkRepresentation(Class<?> clazz) throws ArbiterException {
         Field[] fields = clazz.getFields();
         HashMap<Integer, Field> fieldOrder = new HashMap<>();
-        ArrayList<NetworkObjectMap.NetworkObjectEnum> ret = new ArrayList<>();
+        ArrayList<NetworkElementTypeEnum> ret = new ArrayList<>();
 
         for(Field f : fields) {
             if(f.isAnnotationPresent(ZoarialObjectElement.class)) {
@@ -216,8 +256,8 @@ public class ZoarialNetworkArbiter {
 
         sortedElements.forEach(e -> {
             Class<?> aClass = e.getValue().getType();
-            if(networkObjectMap.containsKey(aClass)) {
-                NetworkObjectMap.NetworkObjectEnum networkType = networkObjectMap.get(aClass);
+            if(classToNetworkElementMap.containsKey(aClass)) {
+                NetworkElementTypeEnum networkType = classToNetworkElementMap.get(aClass);
                 ret.add(networkType);
             } else {
                 String str = "Object is not in map: " + aClass;
@@ -231,15 +271,13 @@ public class ZoarialNetworkArbiter {
     }
 
 
-    public List<NetworkObjectMap.NetworkObjectEnum> decodeNetworkObject(InputStream inputStream) throws ArbiterException {
+    public List<NetworkElementTypeEnum> decodeNetworkObject(InputStream inputStream) throws ArbiterException {
         DataInputStream in = new DataInputStream(inputStream);
         byte[] buf = new byte[256];
         int read;
         int objectLen;
-        ArrayList<NetworkObjectMap.NetworkObjectEnum> ret = new ArrayList<>();
+        ArrayList<NetworkElementTypeEnum> ret = new ArrayList<>();
 
-        NetworkObjectMap.NetworkTypeLengthMap lengthMap = new NetworkObjectMap.NetworkTypeLengthMap();
-        NetworkObjectMap.RawToTypeMap rawToTypeMap = new NetworkObjectMap.RawToTypeMap();
 
         try {
             read = in.read(buf, 0, 3);
@@ -253,12 +291,12 @@ public class ZoarialNetworkArbiter {
 
             for(int i = 0; i < objectLen; i++) {
                 byte rawType = in.readByte();
-                if(!rawToTypeMap.containsKey(rawType)) {
+                if(!byteToNetworkElementMap.containsKey(rawType)) {
                     throw new NotANetworkObject("Invalid raw type: " + rawType);
                 }
 
-                NetworkObjectMap.NetworkObjectEnum type = rawToTypeMap.get(rawType);
-                in.readNBytes(buf, 0, lengthMap.get(type));
+                NetworkElementTypeEnum type = byteToNetworkElementMap.get(rawType);
+                in.readNBytes(buf, 0, networkElementLengthMap.get(type));
                 ret.add(type);
             }
             if(in.readByte() != (byte)255) {
@@ -276,6 +314,9 @@ public class ZoarialNetworkArbiter {
     }
 
     public <T> T createObject(Class<T> clazz, InputStream inputStream) {
+        if(!clazz.isAnnotationPresent(ZoarialNetworkObject.class)) {
+            throw new NotANetworkObject("Object is not a network object");
+        }
         T obj;
         try {
             obj = clazz.getDeclaredConstructor().newInstance();
@@ -283,31 +324,13 @@ public class ZoarialNetworkArbiter {
             throw new RuntimeException(e);
         }
 
-        Field[] fields = clazz.getFields();
-        HashMap<Integer, Field> fieldOrder = new HashMap<>();
-
-        for(Field f : fields) {
-            if(f.isAnnotationPresent(ZoarialObjectElement.class)) {
-                ZoarialObjectElement objectElement = f.getAnnotation(ZoarialObjectElement.class);
-                if(!fieldOrder.containsKey(objectElement.placement())) {
-                    fieldOrder.put(objectElement.placement(), f);
-                } else {
-                    Field existingField = fieldOrder.get(objectElement.placement());
-                    String str = "Duplicate placement found: " + objectElement.placement() + ". Existing: \"" + existingField + "\". New: \"" + f + "\".";
-                    throw new DuplicatePlacement(str);
-                }
-            }
-        }
-
-        // Sort the field order by the key (user provided placement)
-        List<Map.Entry<Integer, Field>> sortedElements = fieldOrder.entrySet().stream().sorted(Comparator.comparingInt(Map.Entry::getKey)).collect(Collectors.toList());
+        NetworkObjectStructure objectStructure = getObjectStructure(obj);
+        List<NetworkElement> basicElements = objectStructure.getBasicElements();
 
         DataInputStream in = new DataInputStream(inputStream);
         byte[] buf = new byte[256];
         int read;
         int objectLen;
-
-        NetworkObjectMap.RawToTypeMap rawToTypeMap = new NetworkObjectMap.RawToTypeMap();
 
         try {
             read = in.read(buf, 0, 3);
@@ -318,11 +341,16 @@ public class ZoarialNetworkArbiter {
                 throw new NotANetworkObject("Incorrect Arbiter Object Version");
             }
             objectLen = in.readUnsignedShort();
+            System.out.println("Object length: " + objectLen);
 
-            for(Map.Entry<Integer, Field> e : sortedElements) {
+            if(objectLen != basicElements.size()) {
+                throw new MismatchedObject("Element length of receiving object does not equal given object");
+            }
+
+            for(NetworkElement e : basicElements) {
                 byte rawType = in.readByte();
-                NetworkObjectMap.NetworkObjectEnum type = rawToTypeMap.get(rawType);
-                Field field = e.getValue();
+                NetworkElementTypeEnum type = byteToNetworkElementMap.get(rawType);
+                Field field = e.getField();
 
                 if(field.getType().isPrimitive()) {
                     switch (type) {
@@ -331,7 +359,7 @@ public class ZoarialNetworkArbiter {
                         case INT -> field.setInt(obj, in.readInt());
                         case LONG -> field.setLong(obj, in.readLong());
                         case BOOLEAN -> field.setBoolean(obj, in.readBoolean());
-                        default -> {}
+                        default -> throw new NotANetworkObject("Unsupported primitive");
                     }
                 } else {
                     switch (type) {
@@ -346,6 +374,7 @@ public class ZoarialNetworkArbiter {
                         }
                         case ARRAY -> {
                         }
+                        default -> throw new NotANetworkObject("Unsupported object");
                     }
                 }
             }
@@ -363,6 +392,97 @@ public class ZoarialNetworkArbiter {
 
 
         return obj;
+    }
+
+    public static class NetworkElement {
+        private final int index;
+        private final NetworkElementTypeEnum type;
+        private final Field field;
+
+        NetworkElement(int index, NetworkElementTypeEnum type, Field field) {
+            this.index = index;
+            this.type = type;
+            this.field = field;
+        }
+
+        public Field getField() {
+            return field;
+        }
+
+        public int getIndex() {
+            return index;
+        }
+
+        public NetworkElementTypeEnum getType() {
+            return type;
+        }
+    }
+
+    public static class NetworkObjectStructure {
+        private final List<NetworkElement> basicElements;
+        private final List<NetworkElement> advancedElements;
+
+        public NetworkObjectStructure(List<NetworkElement> basicElements, List<NetworkElement> advancedElements) {
+            this.advancedElements = advancedElements;
+            this.basicElements = basicElements;
+        }
+
+        List<NetworkElement> getBasicElements() {
+            return basicElements;
+        }
+
+        List<NetworkElement> getAdvancedElements() {
+            return advancedElements;
+        }
+    }
+
+    /**
+     *
+     * @param obj
+     * @return A sorted list of {@link NetworkElement NetworkElements}
+     */
+    public NetworkObjectStructure getObjectStructure(Object obj) {
+        if(!obj.getClass().isAnnotationPresent(ZoarialNetworkObject.class)) {
+            throw new NotANetworkObject("Object is not a ZoarialNetworkObject.");
+        }
+
+        Class<?> objectClass = obj.getClass();
+        Field[] fields = objectClass.getFields();
+        ArrayList<NetworkElement> basicList = new ArrayList<>();
+        ArrayList<NetworkElement> advancedList = new ArrayList<>();
+
+        for(Field f : fields) {
+            if(f.isAnnotationPresent(ZoarialObjectElement.class)) {
+                ZoarialObjectElement objectElementAnnotation = f.getAnnotation(ZoarialObjectElement.class);
+                Class<?> fieldClass = f.getType();
+                int placement = objectElementAnnotation.placement();
+
+                if(!classToNetworkElementMap.containsKey(fieldClass)) {
+                    String str = "Object is not in map: " + fieldClass;
+                    System.out.println(str);
+                    throw new NotANetworkObject(str);
+                }
+                NetworkElementTypeEnum networkType = classToNetworkElementMap.get(fieldClass);
+                List<NetworkElement> correctList;
+
+                correctList = switch(networkType) {
+                    case BYTE, SHORT, INT, LONG, BOOLEAN -> basicList;
+                    case UUID, STRING, ARRAY -> advancedList;
+                };
+
+                if(correctList.stream().filter(e -> e.getIndex() == placement).findFirst().isEmpty()) {
+                    correctList.add(new NetworkElement(placement, networkType, f));
+                } else {
+                    NetworkElement networkElement = correctList.get(placement);
+                    throw new DuplicatePlacement(networkElement.getField().getAnnotation(ZoarialObjectElement.class), objectElementAnnotation);
+                }
+            }
+        }
+
+        // Print list
+        //sortedElements.forEach(e -> System.out.println("Entry " + e.getIndex() + ": " + e.getType()));
+
+        return new NetworkObjectStructure(basicList.stream().sorted(Comparator.comparingInt(NetworkElement::getIndex)).collect(Collectors.toList()), advancedList.stream().sorted(Comparator.comparingInt(NetworkElement::getIndex)).collect(Collectors.toList()));
     }
 
 }

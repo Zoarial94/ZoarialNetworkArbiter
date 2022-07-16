@@ -17,6 +17,7 @@ public class Tests {
 
         sendingWorkingObject.l1 = 27558;
         sendingWorkingObject.s1 = 12555;
+        sendingWorkingObject.str1 = "Another test string";
 
         Thread sendingThread = new Thread(new SendingThread());
         Thread receivingThread = new Thread(new ReceivingThread());

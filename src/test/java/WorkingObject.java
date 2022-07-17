@@ -2,6 +2,7 @@ import me.zoarial.networkArbiter.annotations.ZoarialObjectElement;
 import me.zoarial.networkArbiter.annotations.ZoarialNetworkObject;
 
 import java.util.Objects;
+import java.util.UUID;
 
 @ZoarialNetworkObject
 public class WorkingObject {
@@ -29,6 +30,9 @@ public class WorkingObject {
 
     @ZoarialObjectElement(placement = 1)
     public String str1 = "This is a test";
+
+    @ZoarialObjectElement(placement = 11)
+    public UUID uuid = UUID.randomUUID();
 
     @Override
     public boolean equals(Object o) {

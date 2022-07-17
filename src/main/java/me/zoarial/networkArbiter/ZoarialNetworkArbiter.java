@@ -260,15 +260,15 @@ public class ZoarialNetworkArbiter {
                 case INT -> ByteBuffer.allocate(4).putInt((int)f.get(obj)).array();
                 case LONG -> ByteBuffer.allocate(8).putLong((long)f.get(obj)).array();
                 case UUID -> {
-                    UUID uuid = (UUID)f.get(UUID.class);
+                    UUID uuid = (UUID)f.get(obj);
                     yield ByteBuffer.allocate(16).putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits()).array();
                 }
                 case BOOLEAN -> ByteBuffer.allocate(1).put((byte)((Boolean)f.get(obj) ? 1 : 0)).array();
                 case STRING ->  ((String)f.get(obj)).getBytes();
                 case ARRAY -> new byte[0];
             };
-        } catch (Exception ignored) {
-            throw new RuntimeException("Type wasn't expected type: ");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -340,29 +340,27 @@ public class ZoarialNetworkArbiter {
                 }
 
                 NetworkElementType type = byteToNetworkElementMap.get(rawType);
-                switch(type) {
-                    case BYTE, SHORT, INT, LONG, BOOLEAN, UUID -> {
-                        if(readingAdvanced) {
-                            throw new NotANetworkObject("Incorrect object structure order from network.");
-                        }
-                        in.readNBytes(buf, 0, networkElementLengthMap.get(type));
-                        ret.add(type);
+                if(isBasicElement(type)) {
+                    if(readingAdvanced) {
+                        throw new NotANetworkObject("Incorrect object structure order from network.");
                     }
-                    case STRING, ARRAY -> {
-                        if(!readingAdvanced) {
-                            readingAdvanced = true;
-                        }
-                        switch (type) {
-                            case STRING -> {
-                                // frikin java and their always signed-ness
-                                short strLen = (short)((short)in.readByte() & (short)0xFF);
-                                advancedElementDataLen += strLen;
-                                ret.add(type);
-                            }
-                            case ARRAY -> throw new RuntimeException("Not implemented");
-                        }
+                    in.readNBytes(buf, 0, networkElementLengthMap.get(type));
+                    ret.add(type);
+
+                } else {
+                    if(!readingAdvanced) {
+                        readingAdvanced = true;
                     }
-                    default -> throw new RuntimeException("Forgot to implement: " + type);
+                    switch (type) {
+                        case STRING -> {
+                            // frikin java and their always signed-ness
+                            short strLen = (short)((short)in.readByte() & (short)0xFF);
+                            advancedElementDataLen += strLen;
+                            ret.add(type);
+                        }
+                        case ARRAY -> throw new RuntimeException("Not implemented");
+                        default -> throw new RuntimeException("Forgot to implement");
+                    }
                 }
             }
             System.out.println("Network Structure: ");
@@ -451,7 +449,7 @@ public class ZoarialNetworkArbiter {
                         case SHORT -> field.set(obj, in.readShort());
                         case INT -> field.set(obj, in.readInt());
                         case LONG -> field.set(obj, in.readLong());
-                        case UUID -> throw new RuntimeException("Not implemented");
+                        case UUID -> field.set(obj, new UUID(in.readLong(), in.readLong()));
                         case BOOLEAN -> field.set(obj, in.readBoolean());
                         default -> throw new NotANetworkObject("Unsupported object");
                     }
@@ -490,14 +488,9 @@ public class ZoarialNetworkArbiter {
                 }
             }
 
-
-
             if(in.readByte() != (byte)255) {
                 throw new NotANetworkObject("Object doesn't end correctly.");
             }
-
-
-
         } catch (IOException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -602,10 +595,7 @@ public class ZoarialNetworkArbiter {
                 NetworkElementType networkType = classToNetworkElementMap.get(fieldClass);
                 List<NetworkElement> correctList;
 
-                correctList = switch(networkType) {
-                    case BYTE, SHORT, INT, LONG, BOOLEAN -> basicList;
-                    case UUID, STRING, ARRAY -> advancedList;
-                };
+                correctList = isBasicElement(networkType) ? basicList : advancedList;
 
                 if(correctList.stream().filter(e -> e.getIndex() == placement).findFirst().isEmpty()) {
                     correctList.add(new NetworkElement(placement, networkType, f));
@@ -620,6 +610,13 @@ public class ZoarialNetworkArbiter {
         //sortedElements.forEach(e -> System.out.println("Entry " + e.getIndex() + ": " + e.getType()));
 
         return new NetworkObject(basicList.stream().sorted(Comparator.comparingInt(NetworkElement::getIndex)).collect(Collectors.toList()), advancedList.stream().sorted(Comparator.comparingInt(NetworkElement::getIndex)).collect(Collectors.toList()));
+    }
+
+    boolean isBasicElement(NetworkElementType type) {
+         return switch(type) {
+            case BYTE, SHORT, INT, LONG, BOOLEAN, UUID -> true;
+            case STRING, ARRAY -> false;
+        };
     }
 
 }

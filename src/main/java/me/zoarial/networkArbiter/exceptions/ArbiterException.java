@@ -1,4 +1,4 @@
-package me.zoarial.NetworkArbiter.exceptions;
+package me.zoarial.networkArbiter.exceptions;
 
 public abstract class ArbiterException extends RuntimeException {
     public ArbiterException() {

@@ -1,9 +1,7 @@
-package me.zoarial.NetworkArbiter.exceptions;
+package me.zoarial.networkArbiter.exceptions;
 
 
-import me.zoarial.NetworkArbiter.annotations.ZoarialObjectElement;
-
-import java.lang.reflect.Field;
+import me.zoarial.networkArbiter.annotations.ZoarialObjectElement;
 
 public class DuplicatePlacement extends ArbiterException {
     public DuplicatePlacement(String str) {

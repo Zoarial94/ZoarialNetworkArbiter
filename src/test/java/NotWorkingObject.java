@@ -1,5 +1,5 @@
-import me.zoarial.NetworkArbiter.annotations.ZoarialObjectElement;
-import me.zoarial.NetworkArbiter.annotations.ZoarialNetworkObject;
+import me.zoarial.networkArbiter.annotations.ZoarialObjectElement;
+import me.zoarial.networkArbiter.annotations.ZoarialNetworkObject;
 
 @ZoarialNetworkObject
 public class NotWorkingObject {

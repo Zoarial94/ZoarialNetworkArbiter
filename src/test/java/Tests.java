@@ -1,12 +1,11 @@
-import me.zoarial.NetworkArbiter.ZoarialNetworkArbiter;
-import me.zoarial.NetworkArbiter.exceptions.ArbiterException;
+import me.zoarial.networkArbiter.ZoarialNetworkArbiter;
+import me.zoarial.networkArbiter.exceptions.ArbiterException;
 
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class Tests {
@@ -44,10 +43,10 @@ public class Tests {
     static class SendingThread implements Runnable {
         @Override
         public void run() {
-            try {
-                ZoarialNetworkArbiter arbiter = new ZoarialNetworkArbiter(new Socket(Inet4Address.getLoopbackAddress(), 9400));
+            try (Socket socket = new Socket(Inet4Address.getLoopbackAddress(), 9400)) {
+                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.getInstance();
 
-                arbiter.sendObject(sendingWorkingObject);
+                arbiter.sendObject(sendingWorkingObject, socket);
                 try {
                     //arbiter.sendObject(new NotWorkingObject());
                 } catch(ArbiterException ignored) {
@@ -65,9 +64,9 @@ public class Tests {
         public void run() {
             try(ServerSocket serverSocket = new ServerSocket(9400)) {
 
-                ZoarialNetworkArbiter arbiter = new ZoarialNetworkArbiter(serverSocket.accept());
+                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.getInstance();
 
-                Optional<WorkingObject> workingObjectOptional = arbiter.receiveObject(WorkingObject.class);
+                Optional<WorkingObject> workingObjectOptional = arbiter.receiveObject(WorkingObject.class, serverSocket.accept());
 
                 returnedObject.set(workingObjectOptional.get());
                 synchronized (returnedObject) {

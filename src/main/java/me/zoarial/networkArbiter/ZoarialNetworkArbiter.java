@@ -112,8 +112,15 @@ public class ZoarialNetworkArbiter {
 
         basicElements.forEach(e -> {
             NetworkElementType type = e.getType();
-            totalLen.getAndAdd(networkElementLengthMap.get(type) + 1);
-
+            int sizeToAdd = 1;
+            try {
+                if(!e.isOptional() || (e.isOptional() && e.getField().get(obj) != null)) {
+                    sizeToAdd += networkElementLengthMap.get(type);
+                }
+            } catch (IllegalAccessException ex) {
+                throw new RuntimeException(ex);
+            }
+            totalLen.getAndAdd(sizeToAdd);
         });
 
         advancedElements.forEach(e-> {
@@ -139,11 +146,29 @@ public class ZoarialNetworkArbiter {
         System.arraycopy(ByteBuffer.allocate(2).putShort((short)(basicElements.size() + advancedElements.size())).array(), 0, buf, 4, 2);
         System.out.println("Working loop: \n");
         for (NetworkElement element : basicElements) {
+            boolean optionalPresent;
+            try {
+                optionalPresent = element.getField().get(obj) != null;
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
 
-            byte[] tmp = getByteList(obj, element);
+            byte[] tmp;
+            if(!element.isOptional() || optionalPresent) {
+                tmp = getByteList(obj, element);
+            } else {
+                tmp = new byte[0];
+            }
 
             System.out.println("Header (" + element.getType() + "):");
-            buf[i] = networkElementToByteMap.get(element.getType());
+            byte header = networkElementToByteMap.get(element.getType());
+            if(element.isOptional()) {
+                header |= (1 << 7);
+                if(optionalPresent) {
+                    header |= (1 << 6);
+                }
+            }
+            buf[i] = header;
             System.out.println(buf[i]);
             i++;
 
@@ -220,7 +245,7 @@ public class ZoarialNetworkArbiter {
 
     }
 
-    public <T> Optional<T> receiveObject(Class<T> clazz, Socket socket) {
+    public <T> T receiveObject(Class<T> clazz, Socket socket) throws MismatchedObject {
         BufferedInputStream rawIn;
         byte[] buf = new byte[256];
         int len;
@@ -247,13 +272,18 @@ public class ZoarialNetworkArbiter {
             System.out.println("Objects match signature");
         }
 
-        return Optional.of(createObject(clazz, new ByteArrayInputStream(buf)));
+        return createObject(clazz, new ByteArrayInputStream(buf));
     }
 
     public byte[] getByteList(Object obj, NetworkElement element) {
         NetworkElementType type = element.getType();
         Field f = element.getField();
         try {
+            if(element.isOptional()) {
+                if(element.getField().get(obj) == null) {
+                    return new byte[0];
+                }
+            }
             return switch (type) {
                 case BYTE -> new byte[]{(byte) f.get(obj)};
                 case SHORT -> ByteBuffer.allocate(2).putShort((short)f.get(obj)).array();
@@ -325,6 +355,9 @@ public class ZoarialNetworkArbiter {
 
         try {
             read = in.read(buf, 0, 3);
+            if(read != 3) {
+                throw new NotANetworkObject("Not ZNA");
+            }
             if(Arrays.compare(buf, 0, 3, buf, 0, 3) != 0) {
                 throw new NotANetworkObject("Not ZNA");
             }
@@ -335,6 +368,12 @@ public class ZoarialNetworkArbiter {
 
             for(int i = 0; i < objectLen; i++) {
                 byte rawType = in.readByte();
+                boolean optional = (rawType & (1 << 7)) != 0;
+                boolean optionalPresent = optional && ((rawType & (1 << 6)) != 0);
+
+                // Remove optional and present flags
+                rawType = (byte)(rawType & 0b00111111);
+
                 if(!byteToNetworkElementMap.containsKey(rawType)) {
                     throw new NotANetworkObject("Invalid raw type: " + rawType);
                 }
@@ -344,7 +383,9 @@ public class ZoarialNetworkArbiter {
                     if(readingAdvanced) {
                         throw new NotANetworkObject("Incorrect object structure order from network.");
                     }
-                    in.readNBytes(buf, 0, networkElementLengthMap.get(type));
+                    if(!optional || (optional && optionalPresent)) {
+                        in.readNBytes(buf, 0, networkElementLengthMap.get(type));
+                    }
                     ret.add(type);
 
                 } else {
@@ -427,11 +468,21 @@ public class ZoarialNetworkArbiter {
 
             for(NetworkElement e : basicElements) {
                 byte rawType = in.readByte();
+                boolean optional = (rawType & (1 << 7)) != 0;
+                boolean optionalPresent = optional && ((rawType & (1 << 6)) != 0);
+                boolean present = !optional || optionalPresent;
+
+                // Remove optional and present flags
+                rawType = (byte)(rawType & 0b00111111);
                 NetworkElementType type = byteToNetworkElementMap.get(rawType);
                 Field field = e.getField();
 
                 if(e.getType() != type) {
                     throw new MismatchedObject("Expected type " + e.getType() + ". Got: " + type);
+                }
+
+                if(!present) {
+                    continue;
                 }
 
                 if(field.getType().isPrimitive()) {
@@ -503,11 +554,13 @@ public class ZoarialNetworkArbiter {
         private final int index;
         private final NetworkElementType type;
         private final Field field;
+        private final boolean optional;
 
-        NetworkElement(int index, NetworkElementType type, Field field) {
+        NetworkElement(int index, NetworkElementType type, Field field, boolean optional) {
             this.index = index;
             this.type = type;
             this.field = field;
+            this.optional = optional;
         }
 
         public Field getField() {
@@ -520,6 +573,10 @@ public class ZoarialNetworkArbiter {
 
         public NetworkElementType getType() {
             return type;
+        }
+
+        public boolean isOptional() {
+            return optional;
         }
     }
 
@@ -586,19 +643,25 @@ public class ZoarialNetworkArbiter {
                 ZoarialObjectElement objectElementAnnotation = f.getAnnotation(ZoarialObjectElement.class);
                 Class<?> fieldClass = f.getType();
                 int placement = objectElementAnnotation.placement();
+                boolean optional = objectElementAnnotation.optional();
 
                 if(!classToNetworkElementMap.containsKey(fieldClass)) {
+                    if(fieldClass.equals(Optional.class)) {
+                        throw new NotANetworkObject("The Optional class is not supported. Please use the `optional` attribute on @ZoarialObjectElement");
+                    }
                     String str = "Object is not in map: " + fieldClass;
                     System.out.println(str);
                     throw new NotANetworkObject(str);
+                } else if(optional && fieldClass.isPrimitive()) {
+                    throw new RuntimeException("A primitive type cannot be optional: " + objectElementAnnotation);
                 }
                 NetworkElementType networkType = classToNetworkElementMap.get(fieldClass);
                 List<NetworkElement> correctList;
 
-                correctList = isBasicElement(networkType) ? basicList : advancedList;
+                correctList = (isBasicElement(networkType)) ? basicList : advancedList;
 
                 if(correctList.stream().filter(e -> e.getIndex() == placement).findFirst().isEmpty()) {
-                    correctList.add(new NetworkElement(placement, networkType, f));
+                    correctList.add(new NetworkElement(placement, networkType, f, optional));
                 } else {
                     NetworkElement networkElement = correctList.get(placement);
                     throw new DuplicatePlacement(networkElement.getField().getAnnotation(ZoarialObjectElement.class), objectElementAnnotation);

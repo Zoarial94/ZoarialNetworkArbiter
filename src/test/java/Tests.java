@@ -75,9 +75,9 @@ public class Tests {
 
                 ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.getInstance();
 
-                Optional<WorkingObject> workingObjectOptional = arbiter.receiveObject(WorkingObject.class, serverSocket.accept());
+                WorkingObject workingObject = arbiter.receiveObject(WorkingObject.class, serverSocket.accept());
 
-                returnedObject.set(workingObjectOptional.get());
+                returnedObject.set(workingObject);
                 synchronized (returnedObject) {
                     returnedObject.notify();
                 }

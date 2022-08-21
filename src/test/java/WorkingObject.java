@@ -28,6 +28,9 @@ public class WorkingObject {
     @ZoarialObjectElement(placement = 10)
     public Boolean B1 = false;
 
+    @ZoarialObjectElement(placement = 12, optional = true)
+    public Integer optint1 = null;
+
     @ZoarialObjectElement(placement = 1)
     public String str1 = "This is a test";
 

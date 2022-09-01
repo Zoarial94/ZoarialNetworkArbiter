@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class Tests {
@@ -51,7 +50,7 @@ public class Tests {
             System.out.println("Trying to connect to socket...");
             System.out.flush();
             try (Socket socket = new Socket(Inet4Address.getLoopbackAddress(), 9400)) {
-                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.getInstance();
+                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.INSTANCE;
 
                 arbiter.sendObject(sendingWorkingObject, socket);
                 try {
@@ -73,7 +72,7 @@ public class Tests {
             System.out.flush();
             try(ServerSocket serverSocket = new ServerSocket(9400)) {
 
-                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.getInstance();
+                ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.INSTANCE;
 
                 WorkingObject workingObject = arbiter.receiveObject(WorkingObject.class, serverSocket.accept());
 

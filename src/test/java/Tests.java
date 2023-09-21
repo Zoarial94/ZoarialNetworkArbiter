@@ -1,5 +1,6 @@
 import me.zoarial.networkArbiter.ZoarialNetworkArbiter;
 import me.zoarial.networkArbiter.exceptions.ArbiterException;
+import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -7,11 +8,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class Tests {
 
     static final AtomicReference<WorkingObject> returnedObject = new AtomicReference<>();
     static final WorkingObject sendingWorkingObject = new WorkingObject();
-    public static void main(String[] args) {
+
+    @Test
+    void WorkingObjectTest() {
 
         sendingWorkingObject.l1 = 27558;
         sendingWorkingObject.s1 = 12555;
@@ -31,16 +36,14 @@ public class Tests {
         try {
             System.out.println("Waiting...");
             synchronized (returnedObject) {
-                returnedObject.wait();
+                returnedObject.wait(10000);
             }
             System.out.println("Done waiting.");
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
 
-        if(returnedObject.get() != null) {
-            System.out.println("Received object is equal to new object: " + returnedObject.get().equals(sendingWorkingObject));
-        }
+        assertEquals(sendingWorkingObject, returnedObject.get());
 
     }
 
@@ -60,6 +63,7 @@ public class Tests {
                 }
 
             } catch (IOException e) {
+                returnedObject.notify();
                 throw new RuntimeException(e);
             }
         }

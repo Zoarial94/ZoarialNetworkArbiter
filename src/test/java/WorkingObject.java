@@ -1,6 +1,8 @@
 import me.zoarial.networkArbiter.annotations.ZoarialObjectElement;
 import me.zoarial.networkArbiter.annotations.ZoarialNetworkObject;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -31,22 +33,28 @@ public class WorkingObject {
     @ZoarialObjectElement(placement = 12, optional = true)
     public Integer optint1 = null;
 
+    @ZoarialObjectElement(placement = 13, optional = true)
+    public Integer optint2 = 77;
+
     @ZoarialObjectElement(placement = 1)
     public String str1 = "This is a test";
 
     @ZoarialObjectElement(placement = 11)
     public UUID uuid = UUID.randomUUID();
 
+    @ZoarialObjectElement(placement = 14)
+    public List<Integer> list = new ArrayList<>(List.of(1,2,3));
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         WorkingObject that = (WorkingObject) o;
-        return byte1 == that.byte1 && s1 == that.s1 && i1 == that.i1 && l1 == that.l1 && b2 == that.b2 && num1 == that.num1 && b1 == that.b1 && Objects.equals(B1, that.B1) && Objects.equals(str1, that.str1);
+        return byte1 == that.byte1 && s1 == that.s1 && i1 == that.i1 && l1 == that.l1 && b2 == that.b2 && num1 == that.num1 && b1 == that.b1 && Objects.equals(B1, that.B1) && Objects.equals(optint1, that.optint1) && Objects.equals(optint2, that.optint2) && Objects.equals(str1, that.str1) && Objects.equals(uuid, that.uuid) && Objects.equals(list, that.list);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(byte1, s1, i1, l1, b2, num1, b1, B1, str1);
+        return Objects.hash(byte1, s1, i1, l1, b2, num1, b1, B1, optint1, optint2, str1, uuid, list);
     }
 }

@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class Tests {
+class Tests {
 
     static final AtomicReference<WorkingObject> returnedObject = new AtomicReference<>();
     static final WorkingObject sendingWorkingObject = new WorkingObject();
@@ -36,7 +36,7 @@ public class Tests {
         try {
             System.out.println("Waiting...");
             synchronized (returnedObject) {
-                returnedObject.wait(10000);
+                returnedObject.wait(2000);
             }
             System.out.println("Done waiting.");
         } catch (InterruptedException e) {

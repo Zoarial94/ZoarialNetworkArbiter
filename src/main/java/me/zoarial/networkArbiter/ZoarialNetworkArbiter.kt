@@ -576,7 +576,7 @@ object ZoarialNetworkArbiter {
         return Optional.ofNullable(networkObjectCache[clazz.canonicalName])
     }
 
-    private fun registerNetworkObjectStructure(obj: Any) {
+    fun registerNetworkObjectStructure(obj: Any) {
         val clazz = obj.javaClass
         if (!clazz.isAnnotationPresent(ZoarialNetworkObject::class.java)) {
             throw NotANetworkObject("Object is not a ZoarialNetworkObject.")
@@ -585,58 +585,45 @@ object ZoarialNetworkArbiter {
         val basicList = ArrayList<NetworkElement>()
         val advancedList = ArrayList<NetworkElement>()
         for (f in fields) {
-            if (f.isAnnotationPresent(ZoarialObjectElement::class.java)) {
+            if (!f.isAnnotationPresent(ZoarialObjectElement::class.java)) {
+                continue
+            }
 
-                val objectElementAnnotation = f.getAnnotation(ZoarialObjectElement::class.java)
-                val optional: Boolean = objectElementAnnotation.optional
-                val fieldClass = f.type
-                val placement: Int = objectElementAnnotation.placement
-                val isArray: Boolean = !fieldClass.isPrimitive && f[obj] is List<*>
-                //val isArray: Boolean = fieldClass.isInterface && f[obj].javaClass.isAssignableFrom(java.util.List::class.javaObjectType)
+            val member = f[obj]
+            if(member is List<*>) {
+                handleListNetworkElement(member, f, basicList, advancedList)
+                continue
+            }
+            val objectElementAnnotation = f.getAnnotation(ZoarialObjectElement::class.java)
+            val optional: Boolean = objectElementAnnotation.optional
+            val fieldClass = f.type
+            val placement: Int = objectElementAnnotation.placement
 
-                // Error Checking
-                when {
-                    isArray -> {
-                        println("Object is an array: $fieldClass")
-                        val list = f[obj] as List<*>
-                        if(list.isEmpty()) {
-                            throw RuntimeException("List is empty")
-                        }
-                        if(list.stream().filter { item -> item == null }.count() != 0L) {
-                            throw RuntimeException("List contains a null object")
-                        }
-                        if (!classToNetworkElementMap.containsKey(list[0]!!.javaClass)) {
-                            throw RuntimeException("Object type not supported")
-                        }
-                    }
-                    !classToNetworkElementMap.containsKey(fieldClass) -> {
-                        if (fieldClass == Optional::class.java) {
-                            throw NotANetworkObject("The Optional class is not supported. Please use the `optional` attribute on @ZoarialObjectElement")
-                        }
-                        val str = "Object is not in map: $fieldClass"
-                        throw NotANetworkObject(str)
-                    }
-                    optional && fieldClass.isPrimitive -> {
-                        throw RuntimeException("A primitive type cannot be optional: $objectElementAnnotation")
-                    }
+            // Error Checking
+            when {
+                fieldClass == Optional::class.java -> {
+                    throw NotANetworkObject("The Optional class is not supported. Please use the `optional` attribute on @ZoarialObjectElement")
                 }
-
-                // Get Type
-                val networkType = if(isArray) {
-                    val list = f[obj] as List<*>
-                    classToNetworkElementMap[list[0]]
-                } else {
-                    classToNetworkElementMap[fieldClass]
+                !classToNetworkElementMap.containsKey(fieldClass) -> {
+                    val str = "Object is not in map: $fieldClass"
+                    throw NotANetworkObject(str)
                 }
-
-                // Add element to the basic or advanced list
-                val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
-                if (correctList.stream().filter { e: NetworkElement -> e.index == placement }.findFirst().isEmpty) {
-                    correctList.add(NetworkElement(obj, placement, networkType, f, optional, isArray))
-                } else {
-                    val networkElement = correctList[placement]
-                    throw DuplicatePlacement(networkElement.field.getAnnotation(ZoarialObjectElement::class.java), objectElementAnnotation)
+                optional && fieldClass.isPrimitive -> {
+                    throw RuntimeException("A primitive type cannot be optional: $objectElementAnnotation")
                 }
+            }
+
+            // Get Type
+            val networkType = classToNetworkElementMap[fieldClass]
+
+            // Add element to the basic or advanced list
+            val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
+            // TODO: Make this error checking happen after the lists have been put together
+            if (correctList.stream().filter { e: NetworkElement -> e.index == placement }.findFirst().isEmpty) {
+                correctList.add(NetworkElement(obj, placement, networkType, f, optional, false))
+            } else {
+                val networkElement = correctList[placement]
+                throw DuplicatePlacement(networkElement.field.getAnnotation(ZoarialObjectElement::class.java), objectElementAnnotation)
             }
         }
 
@@ -646,6 +633,31 @@ object ZoarialNetworkArbiter {
             advancedList.stream().sorted(Comparator.comparingInt { obj: NetworkElement -> obj.index }).collect(Collectors.toList())
         )
         networkObjectCache[clazz.canonicalName] = ret
+    }
+
+    private fun handleListNetworkElement(
+        list: List<*>,
+        f: Field,
+        basicList: ArrayList<NetworkElement>,
+        advancedList: ArrayList<NetworkElement>
+    ) {
+        val objectElementAnnotation = f.getAnnotation(ZoarialObjectElement::class.java)
+        val placement: Int = objectElementAnnotation.placement
+        if(list.isEmpty()) {
+            throw RuntimeException("List is empty")
+        }
+        val networkType = classToNetworkElementMap[list[0]]
+        if(list.stream().filter { item -> item == null }.count() != 0L) {
+            throw RuntimeException("List contains a null object")
+        }
+        if (!classToNetworkElementMap.containsKey(list[0]!!.javaClass)) {
+            throw RuntimeException("Object type not supported")
+        }
+
+        classToNetworkElementMap[list[0]]
+        val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
+        // Optional is always false, but it doesn't really matter. Size of the list matters
+        correctList.add(NetworkElement(list, placement, networkType, f, false, false))
     }
 
     /**
@@ -662,6 +674,7 @@ object ZoarialNetworkArbiter {
             return getObjectStructure(clazz).get()
         }
 
+        System.err.println("Class was not already registered: " + clazz.canonicalName)
         registerNetworkObjectStructure(obj)
         return getObjectStructure(clazz).get()
     }

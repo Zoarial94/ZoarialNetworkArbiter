@@ -22,6 +22,10 @@ class Tests {
         sendingWorkingObject.s1 = 12555;
         sendingWorkingObject.str1 = "Another test string";
 
+        ZoarialNetworkArbiter arbiter = ZoarialNetworkArbiter.INSTANCE;
+
+        arbiter.registerNetworkObjectStructure(sendingWorkingObject);
+
         Thread receivingThread = new Thread(new ReceivingThread());
         Thread sendingThread = new Thread(new SendingThread());
 

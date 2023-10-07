@@ -30,14 +30,14 @@ object ZoarialNetworkArbiter {
     private const val UNSUPPORTED_PRIMITIVE_ERR_STR: String = "Unsupported primitive"
     private const val UNSUPPORTED_OBJECT_ERR_STR: String = "Unsupported object"
 
+    private const val NETWORK_ARBITER_VERSION: Short = 1
+
     internal class AutoIncrementInt {
         private var i: Byte = 1
         fun get(): Byte {
             return i++
         }
     }
-
-    private const val NETWORK_ARBITER_VERSION: Short = 1
 
     init {
 
@@ -107,6 +107,9 @@ object ZoarialNetworkArbiter {
         })
         advancedElements.forEach(Consumer { e: NetworkElement ->
             val type = e.type
+            if(isBasicElement(type) && !e.isArray) {
+                throw RuntimeException("Only advanced elements should be here. Got: $type")
+            }
             try {
                 totalLen.getAndAdd(when (type) {
                     NetworkElementType.STRING -> (e.field[obj] as String).length + 2
@@ -591,7 +594,7 @@ object ZoarialNetworkArbiter {
 
             val member = f[obj]
             if(member is List<*>) {
-                handleListNetworkElement(member, f, basicList, advancedList)
+                handleListNetworkElement(member, f, advancedList)
                 continue
             }
             val objectElementAnnotation = f.getAnnotation(ZoarialObjectElement::class.java)
@@ -618,7 +621,7 @@ object ZoarialNetworkArbiter {
 
             // Add element to the basic or advanced list
             val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
-            // TODO: Make this error checking happen after the lists have been put together
+            // TODO: Optimization: Make this error checking happen after the lists have been put together
             if (correctList.stream().filter { e: NetworkElement -> e.index == placement }.findFirst().isEmpty) {
                 correctList.add(NetworkElement(obj, placement, networkType, f, optional, false))
             } else {
@@ -638,7 +641,6 @@ object ZoarialNetworkArbiter {
     private fun handleListNetworkElement(
         list: List<*>,
         f: Field,
-        basicList: ArrayList<NetworkElement>,
         advancedList: ArrayList<NetworkElement>
     ) {
         val objectElementAnnotation = f.getAnnotation(ZoarialObjectElement::class.java)
@@ -646,18 +648,17 @@ object ZoarialNetworkArbiter {
         if(list.isEmpty()) {
             throw RuntimeException("List is empty")
         }
-        val networkType = classToNetworkElementMap[list[0]]
         if(list.stream().filter { item -> item == null }.count() != 0L) {
             throw RuntimeException("List contains a null object")
         }
-        if (!classToNetworkElementMap.containsKey(list[0]!!.javaClass)) {
+        val clazz = list[0]!!.javaClass
+        if (!classToNetworkElementMap.containsKey(clazz)) {
             throw RuntimeException("Object type not supported")
         }
 
-        classToNetworkElementMap[list[0]]
-        val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
+        val networkType = classToNetworkElementMap[clazz]
         // Optional is always false, but it doesn't really matter. Size of the list matters
-        correctList.add(NetworkElement(list, placement, networkType, f, false, false))
+        advancedList.add(NetworkElement(list, placement, networkType, f, false, false))
     }
 
     /**

@@ -20,11 +20,9 @@ object ZoarialNetworkArbiter {
 
     private val classToNetworkElementMap = HashMap<Class<*>, NetworkElementType>()
     private val networkElementToClassMap = HashMap<NetworkElementType, Class<*>>()
-    private val networkElementToByteMap = HashMap<NetworkElementType, Byte>()
     private val byteToNetworkElementMap = HashMap<Byte, NetworkElementType>()
     private val networkElementLengthMap = HashMap<NetworkElementType, Byte>()
     private val networkObjectCache = HashMap<String, NetworkObject>()
-    private val inc = AutoIncrementInt()
 
     private const val NOT_ZNA_ERR_STR: String = "Not ZNA"
     private const val UNSUPPORTED_PRIMITIVE_ERR_STR: String = "Unsupported primitive"
@@ -59,26 +57,19 @@ object ZoarialNetworkArbiter {
         classToNetworkElementMap[Int::class.javaPrimitiveType!!] = classToNetworkElementMap[Int::class.javaObjectType]!!
         classToNetworkElementMap[Long::class.javaPrimitiveType!!] = classToNetworkElementMap[Long::class.javaObjectType]!!
         classToNetworkElementMap[Boolean::class.javaPrimitiveType!!] = classToNetworkElementMap[Boolean::class.javaObjectType]!!
-        networkElementToByteMap[NetworkElementType.BYTE] = inc.get()
-        networkElementToByteMap[NetworkElementType.SHORT] = inc.get()
-        networkElementToByteMap[NetworkElementType.INT] = inc.get()
-        networkElementToByteMap[NetworkElementType.LONG] = inc.get()
-        networkElementToByteMap[NetworkElementType.BOOLEAN] = inc.get()
-        networkElementToByteMap[NetworkElementType.STRING] = inc.get()
-        networkElementToByteMap[NetworkElementType.UUID] = inc.get()
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.BYTE]!!] = NetworkElementType.BYTE
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.SHORT]!!] = NetworkElementType.SHORT
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.INT]!!] = NetworkElementType.INT
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.LONG]!!] = NetworkElementType.LONG
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.BOOLEAN]!!] = NetworkElementType.BOOLEAN
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.STRING]!!] = NetworkElementType.STRING
-        byteToNetworkElementMap[networkElementToByteMap[NetworkElementType.UUID]!!] = NetworkElementType.UUID
-        networkElementLengthMap[NetworkElementType.BYTE] = 1.toByte()
-        networkElementLengthMap[NetworkElementType.SHORT] = 2.toByte()
-        networkElementLengthMap[NetworkElementType.INT] = 4.toByte()
-        networkElementLengthMap[NetworkElementType.LONG] = 8.toByte()
-        networkElementLengthMap[NetworkElementType.BOOLEAN] = 1.toByte()
-        networkElementLengthMap[NetworkElementType.UUID] = 16.toByte()
+        byteToNetworkElementMap[NetworkElementType.BYTE.getID()] = NetworkElementType.BYTE
+        byteToNetworkElementMap[NetworkElementType.SHORT.getID()] = NetworkElementType.SHORT
+        byteToNetworkElementMap[NetworkElementType.INT.getID()] = NetworkElementType.INT
+        byteToNetworkElementMap[NetworkElementType.LONG.getID()] = NetworkElementType.LONG
+        byteToNetworkElementMap[NetworkElementType.BOOLEAN.getID()] = NetworkElementType.BOOLEAN
+        byteToNetworkElementMap[NetworkElementType.STRING.getID()] = NetworkElementType.STRING
+        byteToNetworkElementMap[NetworkElementType.UUID.getID()] = NetworkElementType.UUID
+        networkElementLengthMap[NetworkElementType.BYTE] = 1
+        networkElementLengthMap[NetworkElementType.SHORT] = 2
+        networkElementLengthMap[NetworkElementType.INT] = 4
+        networkElementLengthMap[NetworkElementType.LONG] = 8
+        networkElementLengthMap[NetworkElementType.BOOLEAN] = 1
+        networkElementLengthMap[NetworkElementType.UUID] = 16
     }
 
     @Throws(ArbiterException::class)
@@ -94,9 +85,8 @@ object ZoarialNetworkArbiter {
         val objectStructure = getObjectStructure(obj)
         val basicElements = objectStructure.basicElements
         val advancedElements = objectStructure.advancedElements
-        //TODO: Why is this atomic?
-        val totalLen = AtomicInteger(7)
-        basicElements.forEach(Consumer { e: NetworkElement ->
+        val totalLen = AtomicInteger(7) // This is atomic because of the concurrent access below
+        basicElements.parallelStream().forEach { e: NetworkElement ->
             val type = e.type
             var sizeToAdd = 1
             try {
@@ -107,16 +97,16 @@ object ZoarialNetworkArbiter {
                 throw RuntimeException(ex)
             }
             totalLen.getAndAdd(sizeToAdd)
-        })
-        advancedElements.forEach(Consumer { e: NetworkElement ->
+        }
+        advancedElements.parallelStream().forEach { e: NetworkElement ->
             val type = e.type
-            if(isBasicElement(type) && !e.isArray) {
+            if (isBasicElement(type) && !e.isArray) {
                 throw RuntimeException("Only advanced elements should be here. Got: $type")
             }
             try {
                 if (e.isArray) {
                     totalLen.getAndAdd(
-                        networkElementLengthMap[type]!!.toInt() * (e.field[obj] as List<*>).size + 2
+                        networkElementLengthMap[type]!!.toInt() * (e.field[obj] as List<*>).size + 3
                     )
                 } else {
                     totalLen.getAndAdd(
@@ -129,7 +119,7 @@ object ZoarialNetworkArbiter {
             } catch (ex: IllegalAccessException) {
                 throw RuntimeException("Something went wrong when getting length for advanced elements.")
             }
-        })
+        }
         println("The total length for this object is: $totalLen")
 
         // 3 for ZNA, 1 for Network Version, 2 for length, 1 for 255 as the last byte
@@ -151,7 +141,7 @@ object ZoarialNetworkArbiter {
                 ByteArray(0)
             }
             println("Header: ${element.type}")
-            var header = networkElementToByteMap[element.type]!!
+            var header = element.type.getID()
             if (element.isOptional) {
                 header = (header.toInt() or (1 shl 7)).toByte()
                 if (optionalPresent) {
@@ -175,8 +165,13 @@ object ZoarialNetworkArbiter {
             println("Advanced elements header:")
             val tmp = getByteList(element)
             val elementType = element.type
-            println("Header ($elementType):")
-            buf[i] = networkElementToByteMap[elementType]!!
+            println("Header: $elementType\nArray: ${element.isArray}")
+            if(element.isArray) {
+                buf[i] = NetworkElementType.ARRAY.getID()
+                println(buf[i])
+                i++
+            }
+            buf[i] = elementType.getID()
             println(buf[i])
             i++
             println("Length: " + tmp.size)
@@ -261,7 +256,7 @@ object ZoarialNetworkArbiter {
      */
     private fun getByteList(element: NetworkElement): ByteArray {
         val obj = element.obj
-        val type = element.type!!
+        val type = element.type
         val f = element.field
         return try {
             // Return an empty array if the optional is empty
@@ -269,6 +264,7 @@ object ZoarialNetworkArbiter {
                 return ByteArray(0)
             }
 
+            // TODO: Remove isArray edge case (Probably after/during implementation of sub-objects)
             if(!element.isArray) { // Handle single elements
                 when (type) {
                     NetworkElementType.BYTE -> byteArrayOf(f[obj] as Byte)
@@ -284,6 +280,8 @@ object ZoarialNetworkArbiter {
                     NetworkElementType.BOOLEAN -> ByteBuffer.allocate(1).put(boolToByte(f[obj] as Boolean)).array()
 
                     NetworkElementType.STRING -> (f[obj] as String).toByteArray()
+                    NetworkElementType.ARRAY -> throw IllegalStateException()
+                    NetworkElementType.SUB_OBJECT -> TODO()
                 }
             } else { // Handle arrays of elements
                 val list = obj as List<*>
@@ -302,6 +300,8 @@ object ZoarialNetworkArbiter {
                     NetworkElementType.UUID -> {
                         (obj as List<UUID>).listIterator().forEach { buffer.putLong(it.mostSignificantBits).putLong(it.leastSignificantBits) }
                     }
+                    NetworkElementType.ARRAY -> throw IllegalStateException("Multi-dimensional arrays are not supported") // There are no arrays of arrays (not yet at least)
+                    NetworkElementType.SUB_OBJECT -> TODO()
                 }
                 buffer.array()
             }
@@ -381,7 +381,7 @@ object ZoarialNetworkArbiter {
                         if (!byteToNetworkElementMap.containsKey(rawType)) {
                             throw NotANetworkObject("Invalid raw type: $rawType")
                         }
-                        val type = byteToNetworkElementMap[rawType]
+                        val type = byteToNetworkElementMap[rawType]!!
                         if (isBasicElement(type)) {
                             if (readingAdvanced) {
                                 throw NotANetworkObject("Incorrect object structure order from network.")
@@ -545,7 +545,7 @@ object ZoarialNetworkArbiter {
         return obj
     }
 
-    class NetworkElement internal constructor(val obj: Any, val index: Int, val type: NetworkElementType?, val field: Field, val isOptional: Boolean, val isArray: Boolean, var byteLength: Int = 0)
+    class NetworkElement internal constructor(val obj: Any, val index: Int, val type: NetworkElementType, val field: Field, val isOptional: Boolean, val isArray: Boolean, var byteLength: Int = 0)
     class NetworkObject(basicElements: List<NetworkElement>?, advancedElements: List<NetworkElement>?) {
         val basicElements: List<NetworkElement>
         val advancedElements: List<NetworkElement>
@@ -631,7 +631,7 @@ object ZoarialNetworkArbiter {
             }
 
             // Get Type
-            val networkType = classToNetworkElementMap[fieldClass]
+            val networkType = classToNetworkElementMap[fieldClass]!!
 
             // Add element to the basic or advanced list
             val correctList: MutableList<NetworkElement> = if (isBasicElement(networkType)) basicList else advancedList
@@ -670,7 +670,7 @@ object ZoarialNetworkArbiter {
             throw RuntimeException("Object type not supported")
         }
 
-        val networkType = classToNetworkElementMap[clazz]
+        val networkType = classToNetworkElementMap[clazz]!!
         // Optional is always false, but it doesn't really matter. Size of the list matters
         advancedList.add(NetworkElement(list, placement, networkType, f, isOptional = false, isArray = true))
     }
@@ -694,11 +694,10 @@ object ZoarialNetworkArbiter {
         return getObjectStructure(clazz).get()
     }
 
-    private fun isBasicElement(type: NetworkElementType?): Boolean {
+    private fun isBasicElement(type: NetworkElementType): Boolean {
         return when (type) {
             NetworkElementType.BYTE, NetworkElementType.SHORT, NetworkElementType.INT, NetworkElementType.LONG, NetworkElementType.BOOLEAN, NetworkElementType.UUID -> true
-            NetworkElementType.STRING -> false
-            null -> TODO()
+            NetworkElementType.STRING,NetworkElementType.ARRAY,NetworkElementType.SUB_OBJECT -> false
         }
     }
 

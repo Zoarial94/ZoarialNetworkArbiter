@@ -30,10 +30,7 @@ public class WorkingObject {
     @ZoarialObjectElement(placement = 10)
     public Boolean B1 = false;
 
-    @ZoarialObjectElement(placement = 12, optional = true)
-    public Integer optint1 = null;
-
-    @ZoarialObjectElement(placement = 13, optional = true)
+    @ZoarialObjectElement(placement = 13)
     public Integer optint2 = 77;
 
     @ZoarialObjectElement(placement = 1)
@@ -50,11 +47,11 @@ public class WorkingObject {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         WorkingObject that = (WorkingObject) o;
-        return byte1 == that.byte1 && s1 == that.s1 && i1 == that.i1 && l1 == that.l1 && b2 == that.b2 && num1 == that.num1 && b1 == that.b1 && Objects.equals(B1, that.B1) && Objects.equals(optint1, that.optint1) && Objects.equals(optint2, that.optint2) && Objects.equals(str1, that.str1) && Objects.equals(uuid, that.uuid) && Objects.equals(list, that.list);
+        return byte1 == that.byte1 && s1 == that.s1 && i1 == that.i1 && l1 == that.l1 && b2 == that.b2 && num1 == that.num1 && b1 == that.b1 && Objects.equals(B1, that.B1) && Objects.equals(optint2, that.optint2) && Objects.equals(str1, that.str1) && Objects.equals(uuid, that.uuid) && Objects.equals(list, that.list);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(byte1, s1, i1, l1, b2, num1, b1, B1, optint1, optint2, str1, uuid, list);
+        return Objects.hash(byte1, s1, i1, l1, b2, num1, b1, B1, optint2, str1, uuid, list);
     }
 }

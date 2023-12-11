@@ -49,11 +49,13 @@ enum class NetworkElementType {
 
     companion object {
         private val classToNetworkElementMap = HashMap<Class<*>, NetworkElementType>()
+        private val byteToNetworkElementMap = HashMap<Byte, NetworkElementType>()
         private const val LENGTH_RUNTIME_ERROR_MESSAGE = "Length only known at run-time"
 
         init {
             classToNetworkElementMap[String::class.javaObjectType] = STRING
             classToNetworkElementMap[java.util.UUID::class.javaObjectType] = UUID
+            classToNetworkElementMap[List::class.java] = ARRAY
             // Add the Java boxed types
             classToNetworkElementMap[Byte::class.javaObjectType] = BYTE
             classToNetworkElementMap[Short::class.javaObjectType] = SHORT
@@ -66,6 +68,10 @@ enum class NetworkElementType {
             classToNetworkElementMap[Int::class.javaPrimitiveType!!] = classToNetworkElementMap[Int::class.javaObjectType]!!
             classToNetworkElementMap[Long::class.javaPrimitiveType!!] = classToNetworkElementMap[Long::class.javaObjectType]!!
             classToNetworkElementMap[Boolean::class.javaPrimitiveType!!] = classToNetworkElementMap[Boolean::class.javaObjectType]!!
+
+            for(e in NetworkElementType.values()) {
+                byteToNetworkElementMap[e.getID()] = e
+            }
         }
         fun isBasicElement(type: NetworkElementType): Boolean {
             return when (type) {
@@ -78,20 +84,44 @@ enum class NetworkElementType {
             return getType(obj.javaClass)
         }
 
-        fun getType(list: List<*>) : Optional<NetworkElementType> {
+        fun getType(b: Byte) : Optional<NetworkElementType> {
+            return Optional.ofNullable(byteToNetworkElementMap[b])
+        }
+
+        fun getType(list: List<Any>) : Optional<NetworkElementType> {
             when {
                 list.isEmpty() -> return Optional.empty()
             }
-            return getType(list[0]!!.javaClass)
+            return getType(list[0].javaClass)
         }
         fun getType(type: Class<*>) : Optional<NetworkElementType> {
             return Optional.ofNullable(classToNetworkElementMap[type])
         }
 
+        fun getTypeOrThrow(type: Class<*>): NetworkElementType {
+            return getTypeOrThrow(type, "Not an element: $type")
+        }
+        fun getTypeOrThrow(type: Class<*>, s: String): NetworkElementType {
+            return getType(type).orElseThrow{ RuntimeException(s) }
+        }
+
+        fun getTypeOrThrow(type: Byte): NetworkElementType {
+            return getTypeOrThrow(type, "Not an element: $type")
+        }
+
+        fun getTypeOrThrow(type: Byte, s: String): NetworkElementType {
+            return getType(type).orElseThrow{ RuntimeException(s) }
+        }
+
+
     }
 
     fun isBasicElement() : Boolean {
         return Companion.isBasicElement(this)
+    }
+
+    fun isAdvancedElement() : Boolean {
+        return !isBasicElement()
     }
 
 }

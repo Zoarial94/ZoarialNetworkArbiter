@@ -156,6 +156,9 @@ object ZoarialNetworkArbiter {
         } else {
             println("Objects match signature")
         }
+        //TODO: More major refactoring
+        // This function should take in the info generated from decodeNetworkObject and create an object from the rest of the stream
+        // This means that decodeNetworkObject need to return more data.
         return createObject(clazz, ByteArrayInputStream(buf))
     }
 
@@ -405,6 +408,12 @@ object ZoarialNetworkArbiter {
         fun equalsStructure(other: List<NetworkElementType>): Boolean {
             //TODO: How do I better handle arrays without losing information?
             // Currently arrays are passed through as their type. Array of Ints is passed as an Int
+            val combinedList = basicElements.plus(advancedElements)
+
+            if(combinedList.size != other.size) {
+                return false;
+            }
+
             return other.zip(basicElements.plus(advancedElements)).all { a -> a.first == a.second.type }
         }
 

@@ -24,6 +24,7 @@ object ZoarialNetworkArbiter {
     private const val UNSUPPORTED_OBJECT_ERR_STR: String = "Unsupported object"
 
     private const val NETWORK_ARBITER_VERSION: Byte = 1
+    private val IDENTIFIER_BYTES = "ZNA".toByteArray(StandardCharsets.US_ASCII)
 
     /**
      *  @param obj The entire object is needed in case there are advanced elements. Advanced elements (such as lists) need to know the run-time value
@@ -49,7 +50,7 @@ object ZoarialNetworkArbiter {
         // Structure should be as follows: Header, Basic element headers, advanced element headers, basic elements, advanced elements
         var i = 6
         val buf = ByteArray(networkObject.getLength())
-        System.arraycopy("ZNA".toByteArray(), 0, buf, 0, 3)
+        System.arraycopy(IDENTIFIER_BYTES, 0, buf, 0, 3)
         buf[3] = NETWORK_ARBITER_VERSION
         System.arraycopy(ByteBuffer.allocate(2).putShort((basicElements.size + advancedElements.size).toShort()).array(), 0, buf, 4, 2)
         println("Working loop: \n")
@@ -99,7 +100,7 @@ object ZoarialNetworkArbiter {
         buf[buf.size - 1] = 255.toByte()
         println("Final array:")
         for (b in buf) {
-            println(b)
+            println(b.toUByte())
         }
         val rawOut: BufferedOutputStream
         try {
@@ -133,7 +134,7 @@ object ZoarialNetworkArbiter {
             // Make sure this is a ZNA Object
             require(
                 inputStream.readNBytes(3)
-                    .zip("ZNA".toByteArray(StandardCharsets.US_ASCII)) { b: Byte, c: Byte -> b == c }.none(Boolean::not)
+                    .zip(IDENTIFIER_BYTES) { b: Byte, c: Byte -> b == c }.none(Boolean::not)
             ) {
                 throw RuntimeException("Not ZNA Header")
             }
